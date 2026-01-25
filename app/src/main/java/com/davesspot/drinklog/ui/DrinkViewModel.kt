@@ -47,6 +47,14 @@ class DrinkViewModel(private val dao: DrinkDao) : ViewModel() {
         }
     }
 
+    fun logDrinkForDate(standardUnits: Double, timestamp: Long) {
+        viewModelScope.launch {
+            // Ensure timestamp is at start of local day
+            val startOfDay = Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()).toLocalDate().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            dao.insertConsumption(ConsumptionLog(standardUnits = standardUnits, timestamp = startOfDay))
+        }
+    }
+
     fun deleteLog(log: ConsumptionLog) {
         viewModelScope.launch {
             dao.deleteConsumption(log)

@@ -323,12 +323,13 @@ fun CreateDrinkSection(onSave: (String, Double) -> Unit, onCancel: () -> Unit) {
 @Composable
 fun ViewLogSection(viewModel: DrinkViewModel) {
     val allLogs by viewModel.allLogs.collectAsState()
+    val drinkTypes by viewModel.drinkTypes.collectAsState()
     var yearMonth by remember { mutableStateOf(YearMonth.now()) }
-    var selectedDayLogs by remember { mutableStateOf<List<ConsumptionLog>?>(null) }
-    var selectedDateStr by remember { mutableStateOf("") }
+    var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
     
     var logToEdit by remember { mutableStateOf<ConsumptionLog?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showAddDrinkMenu by remember { mutableStateOf(false) }
 
     // Summary Stats
     val today = LocalDate.now()
@@ -445,9 +446,8 @@ fun ViewLogSection(viewModel: DrinkViewModel) {
                                     .padding(2.dp)
                                     .background(color, shape = CircleShape)
                                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                                    .clickable(enabled = dayLogs.isNotEmpty()) {
-                                        selectedDayLogs = dayLogs
-                                        selectedDateStr = yearMonth.atDay(day).format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+                                    .clickable {
+                                        selectedDate = yearMonth.atDay(day)
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -471,41 +471,86 @@ fun ViewLogSection(viewModel: DrinkViewModel) {
     }
 
     // Detail Dialog
-    selectedDayLogs?.let { logs ->
+    selectedDate?.let { date ->
+        val selectedDateStr = date.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+        val dayLogs = allLogs.filter { 
+            Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate() == date
+        }
+
         AlertDialog(
-            onDismissRequest = { selectedDayLogs = null },
-            title = { Text("Drinks on $selectedDateStr") },
+            onDismissRequest = { 
+                selectedDate = null 
+                showAddDrinkMenu = false
+            },
+            title = {
+                Text("Drinks on $selectedDateStr")
+            },
             text = {
-                LazyColumn {
-                    items(items = logs) { log ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("${"%.1f".format(log.standardUnits)} Units", modifier = Modifier.weight(1f))
-                            
-                            IconButton(onClick = { 
-                                logToEdit = log
-                                showDatePicker = true
-                            }) {
-                                Icon(Icons.Filled.EditCalendar, "Change Date")
+                Column {
+                    if (showAddDrinkMenu) {
+                        Text("Select Drink to Add:", style = MaterialTheme.typography.labelLarge)
+                        LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
+                            items(items = drinkTypes) { drink ->
+                                TextButton(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = {
+                                        viewModel.logDrinkForDate(drink.standardUnits, date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli())
+                                        showAddDrinkMenu = false
+                                    }
+                                ) {
+                                    Text("${drink.name} (${"%.1f".format(drink.standardUnits)} U)")
+                                }
                             }
-                            
-                            IconButton(onClick = { 
-                                viewModel.deleteLog(log)
-                                selectedDayLogs = selectedDayLogs?.filter { it.id != log.id }
-                                if (selectedDayLogs?.isEmpty() == true) selectedDayLogs = null
-                            }) {
-                                Icon(Icons.Filled.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
+                        }
+                        Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    }
+
+                    if (dayLogs.isEmpty() && !showAddDrinkMenu) {
+                        Text("No drinks logged for this day.")
+                    } else if (dayLogs.isNotEmpty()) {
+                        LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                            items(items = dayLogs) { log ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("${"%.1f".format(log.standardUnits)} Units", modifier = Modifier.weight(1f))
+                                    
+                                    IconButton(onClick = { 
+                                        logToEdit = log
+                                        showDatePicker = true
+                                    }) {
+                                        Icon(Icons.Filled.EditCalendar, "Change Date")
+                                    }
+                                    
+                                    IconButton(onClick = { 
+                                        viewModel.deleteLog(log)
+                                    }) {
+                                        Icon(Icons.Filled.Delete, "Delete", tint = MaterialTheme.colorScheme.error)
+                                    }
+                                }
                             }
                         }
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { selectedDayLogs = null }) {
-                    Text("Close")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { showAddDrinkMenu = !showAddDrinkMenu }) {
+                        Text("Add")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(onClick = { 
+                        selectedDate = null 
+                        showAddDrinkMenu = false
+                    }) {
+                        Text("Close")
+                    }
                 }
             }
         )
@@ -525,7 +570,7 @@ fun ViewLogSection(viewModel: DrinkViewModel) {
                         viewModel.updateLogTimestamp(logToEdit!!, newMillis)
                         // Close both
                         showDatePicker = false
-                        selectedDayLogs = null 
+                        selectedDate = null
                     }
                 }) { Text("OK") }
             },
