@@ -451,7 +451,11 @@ fun ViewLogSection(viewModel: DrinkViewModel) {
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(day.toString(), style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    text = day.toString(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (units > 0.0) Color.Black else Color.Unspecified
+                                )
                             }
                         } else {
                             Spacer(modifier = Modifier.weight(1f).aspectRatio(1f))
