@@ -480,6 +480,7 @@ fun ViewLogSection(viewModel: DrinkViewModel) {
         val dayLogs = allLogs.filter { 
             Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate() == date
         }
+        val dayTotal = dayLogs.sumOf { it.standardUnits }
 
         AlertDialog(
             onDismissRequest = { 
@@ -536,6 +537,14 @@ fun ViewLogSection(viewModel: DrinkViewModel) {
                                 }
                             }
                         }
+                        Divider(modifier = Modifier.padding(vertical = 8.dp))
+                        Text(
+                            text = "Daily Total: ${"%.1f".format(dayTotal)} Units",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.End
+                        )
                     }
                 }
             },
