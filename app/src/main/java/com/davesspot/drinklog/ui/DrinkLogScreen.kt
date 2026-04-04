@@ -57,6 +57,7 @@ import kotlin.math.roundToInt
 fun DrinkLogScreen(viewModel: DrinkViewModel = viewModel(factory = DrinkViewModel.Factory)) {
     var expandedSection by remember { mutableIntStateOf(0) }
     val sections = listOf("Log Drink", "Create Drink", "View Log")
+    val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         sections.forEachIndexed { index, title ->
@@ -71,6 +72,11 @@ fun DrinkLogScreen(viewModel: DrinkViewModel = viewModel(factory = DrinkViewMode
                         onSave = { name, units ->
                             viewModel.addDrinkType(name, units)
                             expandedSection = 0 // Auto-collapse and go to Log
+                        },
+                        onQuickAdd = { units ->
+                            viewModel.logDrink(units)
+                            Toast.makeText(context, "Drink Logged", Toast.LENGTH_SHORT).show()
+                            expandedSection = 2 // Go to View Log
                         },
                         onCancel = {
                             // Optionally just collapse or clear form (handled inside)
@@ -245,7 +251,11 @@ data class Ingredient(
 )
 
 @Composable
-fun CreateDrinkSection(onSave: (String, Double) -> Unit, onCancel: () -> Unit) {
+fun CreateDrinkSection(
+    onSave: (String, Double) -> Unit, 
+    onQuickAdd: (Double) -> Unit,
+    onCancel: () -> Unit
+) {
     var name by remember { mutableStateOf("") }
     var ingredients by remember { mutableStateOf(listOf(Ingredient())) }
 
@@ -292,13 +302,34 @@ fun CreateDrinkSection(onSave: (String, Double) -> Unit, onCancel: () -> Unit) {
             Text("Add Ingredient")
         }
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Row(
+            modifier = Modifier.fillMaxWidth(), 
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             TextButton(onClick = {
                 name = ""
                 ingredients = listOf(Ingredient())
                 onCancel()
             }) { Text("Cancel") }
+            
             Spacer(modifier = Modifier.width(8.dp))
+
+            OutlinedButton(onClick = {
+                val totalUnits = ingredients.sumOf { 
+                    val size = it.sizeOz.toDoubleOrNull() ?: 0.0
+                    val pct = it.percent.toDoubleOrNull() ?: 0.0
+                    (size * (pct / 100.0)) / 0.6
+                }
+                onQuickAdd(totalUnits)
+                
+                // Reset
+                name = ""
+                ingredients = listOf(Ingredient())
+            }) { Text("Quick Add") }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
             Button(onClick = {
                 // Calculate
                 val totalUnits = ingredients.sumOf { 
@@ -333,24 +364,26 @@ fun ViewLogSection(viewModel: DrinkViewModel) {
 
     // Summary Stats
     val today = LocalDate.now()
-    val weekFields = WeekFields.of(Locale.getDefault())
+    val isCurrentMonth = yearMonth == YearMonth.from(today)
     
-    val logsThisYear = allLogs.filter { 
+    val logsForViewYear = allLogs.filter { 
         val date = Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
-        date.year == today.year
+        date.year == yearMonth.year
     }
-    val logsThisMonth = logsThisYear.filter {
+    val logsForViewMonth = logsForViewYear.filter {
         val date = Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
-        date.month == today.month
+        date.month == yearMonth.month
     }
-    val logsThisWeek = logsThisMonth.filter {
-        val date = Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
-        date.get(weekFields.weekOfWeekBasedYear()) == today.get(weekFields.weekOfWeekBasedYear())
-    } 
 
-    val sumYear = logsThisYear.sumOf { it.standardUnits }
-    val sumMonth = logsThisMonth.sumOf { it.standardUnits }
-    val sumWeek = logsThisWeek.sumOf { it.standardUnits }
+    val sumYear = logsForViewYear.sumOf { it.standardUnits }
+    val sumMonth = logsForViewMonth.sumOf { it.standardUnits }
+    val sumWeek = if (isCurrentMonth) {
+        val weekFields = WeekFields.of(Locale.getDefault())
+        logsForViewMonth.filter {
+            val date = Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
+            date.get(weekFields.weekOfWeekBasedYear()) == today.get(weekFields.weekOfWeekBasedYear())
+        }.sumOf { it.standardUnits }
+    } else null
 
     Column(modifier = Modifier.fillMaxWidth()) {
         // Calendar Header
@@ -391,10 +424,6 @@ fun ViewLogSection(viewModel: DrinkViewModel) {
         val daysInMonth = yearMonth.lengthOfMonth()
         val startOffset = yearMonth.atDay(1).dayOfWeek.value % 7 
 
-        val logsForViewMonth = allLogs.filter {
-            val date = Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
-            YearMonth.from(date) == yearMonth
-        }
         val logsByDay = logsForViewMonth.groupBy { 
             Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate().dayOfMonth 
         }
@@ -469,9 +498,11 @@ fun ViewLogSection(viewModel: DrinkViewModel) {
         
         // Stats
         Text("Summary", style = MaterialTheme.typography.titleMedium)
-        Text("Current Week: ${"%.1f".format(sumWeek)} units")
-        Text("Current Month: ${"%.1f".format(sumMonth)} units")
-        Text("Current Year: ${"%.1f".format(sumYear)} units")
+        sumWeek?.let {
+            Text("Week: ${"%.1f".format(it)} units")
+        }
+        Text("Month: ${"%.1f".format(sumMonth)} units")
+        Text("Year: ${"%.1f".format(sumYear)} units")
     }
 
     // Detail Dialog
